@@ -3,7 +3,7 @@ import numpy as np
 import json
 import logging
 from pathlib import Path
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -11,14 +11,14 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 STORE_DIR = Path("./vector_store")
 
-_embedder: SentenceTransformer | None = None
+_embedder: TextEmbedding | None = None
 
 
-def get_embedder() -> SentenceTransformer:
+def get_embedder() -> TextEmbedding:
     global _embedder
     if _embedder is None:
-        logger.info("Loading sentence-transformers model...")
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        logger.info("Loading fastembed model...")
+        _embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
     return _embedder
 
 
@@ -61,7 +61,7 @@ def ingest_document(file_path: Path, doc_id: str, mime_type: str, original_filen
         raise ValueError("No text chunks produced from document.")
 
     embedder = get_embedder()
-    embeddings = embedder.encode(chunks, show_progress_bar=False, normalize_embeddings=True)
+    embeddings = np.array(list(embedder.embed(chunks)), dtype=np.float32)
 
     metadata = [
         {"doc_id": doc_id, "chunk_index": i, "filename": display_name, "text": c}

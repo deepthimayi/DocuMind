@@ -11,7 +11,7 @@ def retrieve_chunks(doc_id: str, query: str, top_k: int = TOP_K) -> list[dict]:
     embeddings, metadata = load_document(doc_id)
 
     embedder = get_embedder()
-    query_vec = embedder.encode([query], normalize_embeddings=True)[0].astype(np.float32)
+    query_vec = np.array(list(embedder.embed([query]))[0], dtype=np.float32)
 
     # Cosine similarity — embeddings are already L2-normalised, so dot product == cosine sim
     scores = embeddings @ query_vec
