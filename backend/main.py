@@ -103,7 +103,7 @@ async def upload_document(file: UploadFile = File(...)):
 
     questions: list[str] = []
     try:
-        _, chunk_meta = load_document(doc_id)
+        chunk_meta = load_document(doc_id)
         questions = await generate_questions(chunk_meta[:3])
     except Exception:
         logger.warning("Question generation failed", exc_info=True)

@@ -1,21 +1,26 @@
-import numpy as np
 import logging
-from ingest import get_embedder, load_document
+from rank_bm25 import BM25Okapi
+from ingest import load_document
 
 logger = logging.getLogger(__name__)
 
 TOP_K = 3
 
 
+def _tokenize(text: str) -> list[str]:
+    return text.lower().split()
+
+
 def retrieve_chunks(doc_id: str, query: str, top_k: int = TOP_K) -> list[dict]:
-    embeddings, metadata = load_document(doc_id)
+    metadata = load_document(doc_id)
 
-    embedder = get_embedder()
-    query_vec = np.array(list(embedder.embed([query]))[0], dtype=np.float32)
+    corpus = [_tokenize(m["text"]) for m in metadata]
+    bm25 = BM25Okapi(corpus)
 
-    # Cosine similarity — embeddings are already L2-normalised, so dot product == cosine sim
-    scores = embeddings @ query_vec
-    top_indices = np.argsort(scores)[::-1][:top_k]
+    scores = bm25.get_scores(_tokenize(query))
+    max_score = max(scores) if max(scores) > 0 else 1.0
+
+    top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
 
     results = []
     for idx in top_indices:
@@ -24,7 +29,7 @@ def retrieve_chunks(doc_id: str, query: str, top_k: int = TOP_K) -> list[dict]:
             "text": m["text"],
             "chunk_index": m["chunk_index"],
             "filename": m["filename"],
-            "relevance_score": round(float(scores[idx]), 4),
+            "relevance_score": round(float(scores[idx]) / max_score, 4),
         })
 
     logger.info(f"Retrieved {len(results)} chunks for doc '{doc_id}'")
