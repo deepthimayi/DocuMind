@@ -818,8 +818,66 @@ let progTimer    = null;
 let docQuestions = {};
 let currentChips = [];
 
+// ── localStorage persistence ───────────────────────────
+const LS_DOCS   = 'dm_docs';
+const LS_ACTIVE = 'dm_active';
+const lsChatKey = id => 'dm_chat_' + id;
+const lsHistKey = id => 'dm_hist_' + id;
+
+function saveDocs() {
+  try {
+    localStorage.setItem(LS_DOCS, JSON.stringify(docs));
+    localStorage.setItem(LS_ACTIVE, activeId || '');
+  } catch(_) {}
+}
+
+function saveChat() {
+  if (!activeId) return;
+  try {
+    localStorage.setItem(lsChatKey(activeId), JSON.stringify(chatLog));
+    localStorage.setItem(lsHistKey(activeId), JSON.stringify(history));
+  } catch(_) {}
+}
+
+function restoreChat(docId) {
+  try {
+    chatLog = JSON.parse(localStorage.getItem(lsChatKey(docId)) || '[]');
+    history = JSON.parse(localStorage.getItem(lsHistKey(docId)) || '[]');
+  } catch(_) { chatLog = []; history = []; }
+
+  if (!chatLog.length) { renderEmpty(true); return; }
+
+  document.getElementById('msgs-inner').innerHTML = '';
+  document.getElementById('toolbar').style.display    = 'flex';
+  document.getElementById('export-btn').style.display = 'flex';
+
+  chatLog.forEach(m => {
+    if (m.role === 'user') {
+      appendMsg('user', m.content, null, false, m.time);
+    } else {
+      const mid = appendMsg('assistant', m.content, null, false, m.time);
+      if (m.sources?.length) finaliseMsg(mid, m.sources);
+    }
+  });
+  scrollBottom();
+}
+
+function restoreState() {
+  try {
+    const storedDocs = JSON.parse(localStorage.getItem(LS_DOCS) || '[]');
+    if (!storedDocs.length) { showLanding(); return; }
+    docs = storedDocs;
+    docs.forEach(d => { docQuestions[d.doc_id] = d.suggested_questions || []; });
+    const storedActive = localStorage.getItem(LS_ACTIVE);
+    activeId = (storedActive && docs.find(d => d.doc_id === storedActive))
+      ? storedActive : docs[docs.length - 1].doc_id;
+    renderDocs(); showChat(); syncInput();
+    restoreChat(activeId);
+  } catch(_) { showLanding(); }
+}
+
 // ── Boot ───────────────────────────────────────────────
-showLanding();
+restoreState();
 initScrollTracking();
 initOfflineDetection();
 
@@ -965,6 +1023,7 @@ async function upload(file) {
     docs.push({ ...data, file_size: fileSize });
     docQuestions[data.doc_id] = data.suggested_questions || [];
     activeId = data.doc_id;
+    saveDocs();
     renderDocs();
     dzReset();
     showChat();
@@ -1042,8 +1101,10 @@ function renderDocs() {
 
 function selectDoc(id) {
   if (id === activeId) return;
-  activeId = id; history = []; chatLog = [];
-  clearChat(); renderDocs(); syncInput(); showChat(); closeSidebar();
+  activeId = id;
+  saveDocs();
+  renderDocs(); syncInput(); showChat(); closeSidebar();
+  restoreChat(id);
   setTimeout(() => document.getElementById('chat-input').focus(), 300);
 }
 
@@ -1052,12 +1113,13 @@ async function delDoc(id) {
   try { await fetch(`${API}/documents/${id}`, { method: 'DELETE' }); } catch(_){}
   docs = docs.filter(x => x.doc_id !== id);
   delete docQuestions[id];
+  try { localStorage.removeItem(lsChatKey(id)); localStorage.removeItem(lsHistKey(id)); } catch(_) {}
   if (activeId === id) {
     activeId = docs.length ? docs[docs.length-1].doc_id : null;
     history = []; chatLog = [];
-    if (!activeId) { showLanding(); } else { clearChat(); }
+    if (!activeId) { showLanding(); } else { restoreChat(activeId); }
   }
-  renderDocs(); syncInput();
+  saveDocs(); renderDocs(); syncInput();
   if (d) toast('inf', 'Document removed', d.filename);
 }
 
@@ -1140,17 +1202,18 @@ function clearChat() {
   document.getElementById('toolbar').style.display    = 'none';
   document.getElementById('export-btn').style.display = 'none';
   history = []; chatLog = [];
+  saveChat();
 }
 
 // ── Messages ───────────────────────────────────────────
-function appendMsg(role, content = '', id = null, streaming = false) {
+function appendMsg(role, content = '', id = null, streaming = false, time = null) {
   document.getElementById('empty-state')?.remove();
   document.getElementById('toolbar').style.display    = 'flex';
   document.getElementById('export-btn').style.display = 'flex';
 
   const mid  = id || `m${Date.now()}`;
   const isU  = role === 'user';
-  const hhmm = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const hhmm = new Date(time || undefined).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
 
   const avU = `<div class="msg-av u" aria-hidden="true"><svg width="14" height="14" fill="none" stroke="white" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>`;
   const avA = `<div class="msg-av a" aria-hidden="true"><svg width="14" height="14" fill="none" stroke="#818CF8" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2"/></svg></div>`;
@@ -1271,8 +1334,9 @@ async function send() {
   if (!q || busy || !activeId) return;
   inp.value = ''; inp.style.height = 'auto';
   busy = true; refreshSendBtn();
+  const now = new Date().toISOString();
   appendMsg('user', q);
-  chatLog.push({ role:'user', content:q, sources:[] });
+  chatLog.push({ role:'user', content:q, sources:[], time: now });
   const aid = appendMsg('assistant', '', null, true);
   const histSnap = history.slice(-6);
 
@@ -1306,7 +1370,8 @@ async function send() {
     }
     finaliseMsg(aid, sources);
     history.push({ role:'user', content:q }, { role:'assistant', content:answer });
-    chatLog.push({ role:'assistant', content:answer, sources });
+    chatLog.push({ role:'assistant', content:answer, sources, time: new Date().toISOString() });
+    saveChat();
   } catch(e) {
     const el = document.getElementById(aid);
     if (el) {
