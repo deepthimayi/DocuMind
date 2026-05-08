@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -13,7 +14,7 @@ from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ingest import ingest_document, load_document
+from ingest import ingest_document, load_document, load_all_documents, update_document_questions
 from retriever import retrieve_chunks
 from chat import stream_answer, generate_questions
 
@@ -24,7 +25,20 @@ ALLOWED_MIME_TYPES = {"application/pdf", "text/plain"}
 ALLOWED_EXTENSIONS = {".pdf", ".txt"}
 MAX_FILE_SIZE_MB = 20
 
-app = FastAPI(title="DocuMind API", version="1.0.0")
+# In-memory document registry {doc_id: {filename, chunk_count, ...}}
+document_registry: dict[str, dict] = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    restored = load_all_documents()
+    for doc in restored:
+        document_registry[doc["doc_id"]] = doc
+    logger.info(f"Restored {len(restored)} document(s) from database")
+    yield
+
+
+app = FastAPI(title="DocuMind API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,9 +53,6 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 @app.get("/", include_in_schema=False)
 async def serve_ui():
     return FileResponse(FRONTEND_DIR / "index.html")
-
-# In-memory document registry {doc_id: {filename, chunk_count, ...}}
-document_registry: dict[str, dict] = {}
 
 
 # ── Models ──────────────────────────────────────────────────────────────────
@@ -105,6 +116,7 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         chunk_meta = load_document(doc_id)
         questions = await generate_questions(chunk_meta[:3])
+        update_document_questions(doc_id, questions)
     except Exception:
         logger.warning("Question generation failed", exc_info=True)
 

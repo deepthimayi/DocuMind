@@ -42,7 +42,7 @@
 
     body {
       background: var(--bg); color: var(--txt);
-      display: flex; height: 100vh; overflow: hidden;
+      display: flex; height: 100dvh; overflow: hidden;
       animation: fadeIn .3s ease-out;
     }
     @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
@@ -417,6 +417,8 @@
     .msg:hover .copy-btn { opacity: 1; }
     .copy-btn:hover       { color: var(--txt); border-color: var(--border-md); }
     .copy-btn.ok          { color: var(--ok); }
+    .bubble.u .copy-btn   { background: rgba(0,0,0,.25); border-color: rgba(255,255,255,.15); color: rgba(255,255,255,.6); }
+    .bubble.u .copy-btn:hover { background: rgba(0,0,0,.4); color: #fff; }
 
     /* Typing indicator */
     .typing { display: flex; align-items: center; gap: 4px; height: 22px; }
@@ -555,6 +557,7 @@
     @media (max-width: 900px) {
       #sidebar {
         position: fixed; top: 0; left: 0; bottom: 0; z-index: 200;
+        width: min(300px, 85vw);
         transform: translateX(-100%);
         box-shadow: 4px 0 32px rgba(0,0,0,.7);
       }
@@ -572,6 +575,23 @@
       .landing-headline { font-size: 26px; }
       .landing-sub { font-size: 14px; }
       .main-dz { padding: 32px 20px; }
+      .msg-body { max-width: 88%; }
+      .model-pill { display: none; }
+    }
+
+    @media (max-width: 480px) {
+      .topbar { padding: 8px 12px; min-height: 48px; }
+      .icon-btn span { display: none; }
+      .icon-btn { padding: 6px 10px; }
+      .msgs-area { padding: 12px 10px; }
+      .input-area { padding: 8px 10px 14px; }
+      .bubble { padding: 10px 13px; font-size: 13px; }
+      .msg-body { max-width: 92%; }
+      .landing-headline { font-size: 22px; }
+      .main-dz { padding: 28px 16px; }
+      .ex-chips { gap: 6px; }
+      .ex-chip { font-size: 12px; padding: 7px 12px; }
+      #send-btn { width: 40px; height: 40px; }
     }
   </style>
 </head>
@@ -1220,7 +1240,7 @@ function appendMsg(role, content = '', id = null, streaming = false, time = null
 
   const dotsH   = streaming && !content ? `<div class="typing" aria-label="Claude is typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>` : '';
   const cursorH = streaming && content  ? `<span class="cursor" aria-hidden="true"></span>` : '';
-  const copyH   = !isU ? `<button class="copy-btn" onclick="copyMsg('${mid}')" title="Copy" aria-label="Copy response"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>` : '';
+  const copyH   = `<button class="copy-btn" onclick="copyMsg('${mid}')" title="Copy" aria-label="Copy message"><svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>`;
 
   const el = document.createElement('div');
   el.id = mid; el.className = `msg ${isU ? 'user' : 'ai'}`;
